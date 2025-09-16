@@ -9,6 +9,7 @@
 #include "focusadaptor.h"
 #include "focusalgorithms.h"
 #include "focusfwhm.h"
+#include "donutmetrics.h"
 #if defined(HAVE_OPENCV)
 #include "focusblurriness.h"
 #endif
@@ -54,6 +55,9 @@
 #include <config-kstars.h>
 
 #include <cmath>
+#include <algorithm>
+#include <limits>
+#include <vector>
 
 #ifdef HAVE_DATAVISUALIZATION
 #include "aberrationinspector.h"
@@ -1548,6 +1552,20 @@ CaptureHistory::FrameData Focus::calculateCurrentMeasureAndWeight()
     frameData.hfr = calculateCurrentHFR();
     frameData.numStars = m_ImageData->getDetectedStars();
 
+    bool donutMetricAvailable = false;
+    double donutMetric = INVALID_STAR_MEASURE;
+    double donutWeight = 1.0;
+
+    if (m_OpsFocusProcess->focusDonut->isChecked() && frameData.hfr == INVALID_STAR_MEASURE)
+    {
+        if (estimateDonutMetric(donutMetric, donutWeight))
+        {
+            donutMetricAvailable = true;
+            frameData.hfr = donutMetric;
+            qCDebug(KSTARS_EKOS_FOCUS) << "Donut-derived focus metric" << donutMetric << "weight" << donutWeight;
+        }
+    }
+
     // Setup with measure we are using (HFR, FWHM, etc)
     if (m_StarMeasure == FOCUS_STAR_NUM_STARS)
     {
@@ -1585,6 +1603,15 @@ CaptureHistory::FrameData Focus::calculateCurrentMeasureAndWeight()
             return edge->HFR;
         });
         frameData.weight = calculateStarWeight(m_OpsFocusProcess->focusUseWeights->isChecked(), hfrs);
+    }
+
+    if (donutMetricAvailable)
+    {
+        if (m_StarMeasure == FOCUS_STAR_FWHM)
+            frameData.fwhm = donutMetric;
+
+        frameData.measure = donutMetric;
+        frameData.weight = donutWeight;
     }
 
     return frameData;
@@ -4538,6 +4565,63 @@ void Focus::donutTimeDilation()
     qCDebug(KSTARS_EKOS_FOCUS) << "Donut time dilation for point " << currentStep << " from " << m_donutOrigExposure << " to "
                                << exposure;
 
+}
+
+bool Focus::estimateDonutMetric(double &metric, double &weight)
+{
+    metric = INVALID_STAR_MEASURE;
+    weight = 1.0;
+
+    if (m_ImageData == nullptr)
+        return false;
+
+    const auto &stats = m_ImageData->getStatistics();
+    if (stats.samples_per_channel <= 0 || stats.width <= 0 || stats.height <= 0)
+        return false;
+
+    const uint8_t *rawBuffer = m_ImageData->getImageBuffer();
+    if (rawBuffer == nullptr)
+        return false;
+
+    FocusUtils::DonutAnalysisResult analysis;
+
+    switch (stats.dataType)
+    {
+        case TBYTE:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const uint8_t *>(rawBuffer), stats);
+            break;
+        case TSHORT:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const short *>(rawBuffer), stats);
+            break;
+        case TUSHORT:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const unsigned short *>(rawBuffer), stats);
+            break;
+        case TLONG:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const long *>(rawBuffer), stats);
+            break;
+        case TULONG:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const unsigned long *>(rawBuffer), stats);
+            break;
+        case TLONGLONG:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const long long *>(rawBuffer), stats);
+            break;
+        case TFLOAT:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const float *>(rawBuffer), stats);
+            break;
+        case TDOUBLE:
+            analysis = FocusUtils::computeDonutAnalysis(reinterpret_cast<const double *>(rawBuffer), stats);
+            break;
+        default:
+            return false;
+    }
+
+    if (!analysis.valid || !std::isfinite(analysis.metric))
+        return false;
+
+    metric = analysis.metric;
+    weight = analysis.weight;
+
+    return true;
 }
 
 void Focus::updateProperty(INDI::Property prop)
