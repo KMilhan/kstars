@@ -1029,6 +1029,11 @@ public slots:
         void donutTimeDilation();
 
         /**
+         * @brief Analyse the current frame using donut morphology to estimate focus offset
+         */
+        bool estimateDonutMetric(double &metric, double &weight);
+
+        /**
          * @brief Filter out duplicate Autofocus requests
          * @param autofocusReason reason for running this Autofocus
          * @return true means do not run AF (previous run only just completed)
