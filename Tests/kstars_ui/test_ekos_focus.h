@@ -17,6 +17,8 @@
 #include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QLabel>
 
 #include <QtGlobal>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -116,8 +118,10 @@
  * @warning Fails the test if detection, algorithm, full-field checkbox or annulus fields cannot be used.
  */
 #define KTRY_FOCUS_CONFIGURE(detection, algorithm, fieldin, fieldout, tolerance) do { \
-    KTRY_FOCUS_GADGET(QCheckBox, focusUseFullField); \
-    focusUseFullField->setCheckState(fieldin < fieldout ? Qt::CheckState::Checked : Qt::CheckState::Unchecked); \
+    KTRY_FOCUS_GADGET(QRadioButton, focusUseFullField); \
+    KTRY_FOCUS_GADGET(QRadioButton, focusSubFrame); \
+    focusUseFullField->setChecked(fieldin < fieldout); \
+    focusSubFrame->setChecked(!(fieldin < fieldout)); \
     KTRY_FOCUS_GADGET(QDoubleSpinBox, focusFullFieldInnerRadius); \
     focusFullFieldInnerRadius->setValue(fieldin); \
     KTRY_FOCUS_GADGET(QDoubleSpinBox, focusFullFieldOuterRadius); \
