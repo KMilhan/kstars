@@ -6,6 +6,7 @@
 #include "auxiliary/kspaths.h"
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDir>
 
 QString KSPaths::locate(QStandardPaths::StandardLocation location, const QString &fileName,
                         QStandardPaths::LocateOptions options)
@@ -38,6 +39,19 @@ QString KSPaths::locate(QStandardPaths::StandardLocation location, const QString
             default:
                 break;
         }
+
+#if defined(KSTARS_BUILD_TESTING)
+        if (findings.isEmpty())
+        {
+            const QByteArray testDataDir = qgetenv("KSTARS_TEST_DATADIR");
+            if (!testDataDir.isEmpty())
+            {
+                const QString candidate = QDir(QString::fromUtf8(testDataDir)).filePath(fileName);
+                if (QFileInfo::exists(candidate))
+                    return candidate;
+            }
+        }
+#endif
     }
 
 #ifdef ANDROID
@@ -78,6 +92,19 @@ QStringList KSPaths::locateAll(QStandardPaths::StandardLocation location, const 
             default:
                 break;
         }
+
+#if defined(KSTARS_BUILD_TESTING)
+        if (findings.isEmpty())
+        {
+            const QByteArray testDataDir = qgetenv("KSTARS_TEST_DATADIR");
+            if (!testDataDir.isEmpty())
+            {
+                const QString candidate = QDir(QString::fromUtf8(testDataDir)).filePath(fileName);
+                if (QFileInfo::exists(candidate))
+                    return { candidate };
+            }
+        }
+#endif
     }
 
 #ifdef ANDROID
