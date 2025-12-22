@@ -23,6 +23,7 @@
 #include "ekos/scheduler/scheduler.h"
 
 #include <QObject>
+#include <QElapsedTimer>
 
 #pragma once
 
@@ -73,10 +74,17 @@ do {\
   */
 #define KTRY_TIMEOUT_DEBUG_IMPL_SUB(expr, timeoutValue, step)\
     if (!(expr)) { \
-        QTRY_LOOP_IMPL((expr), (2 * timeoutValue), step);\
+        const int kstars_timeoutMs = static_cast<int>(timeoutValue); \
+        const int kstars_stepMs = static_cast<int>(step) > 0 ? static_cast<int>(step) : 1; \
+        QElapsedTimer kstars_timer; \
+        kstars_timer.start(); \
+        while (!(expr) && kstars_timer.elapsed() < (2 * kstars_timeoutMs)) \
+            QTest::qWait(kstars_stepMs); \
         if (expr) { \
             QString msg = QString::fromUtf8("QTestLib: This test case check (\"%1\") failed because the requested timeout (%2 ms) was too short, %3 ms would have been sufficient this time."); \
-            msg = msg.arg(QString::fromUtf8(#expr)).arg(timeoutValue).arg(timeoutValue + qt_test_i); \
+            msg = msg.arg(QString::fromUtf8(#expr)) \
+                     .arg(static_cast<qlonglong>(kstars_timeoutMs)) \
+                     .arg(static_cast<qlonglong>(kstars_timeoutMs + kstars_timer.elapsed())); \
             KVERIFY2_SUB(false, qPrintable(msg)); \
         } \
     }
@@ -85,11 +93,16 @@ do {\
   * @brief Subroutine version of QTRY_IMPL
   * @return false if expression equals false, otherwise continuing
   */
-#define KTRY_IMPL_SUB(expr, timeout)\
-    const int qt_test_step = 50; \
-    const int qt_test_timeoutValue = timeout; \
-    QTRY_LOOP_IMPL((expr), qt_test_timeoutValue, qt_test_step); \
-    KTRY_TIMEOUT_DEBUG_IMPL_SUB((expr), qt_test_timeoutValue, qt_test_step)\
+#define KTRY_IMPL_SUB(expr, timeoutAsGiven)\
+    const int kstars_timeoutMs = static_cast<int>(timeoutAsGiven); \
+    const int kstars_stepMs = kstars_timeoutMs < 350 ? (kstars_timeoutMs / 7 + 1) : 50; \
+    { \
+        QElapsedTimer kstars_timer; \
+        kstars_timer.start(); \
+        while (!(expr) && kstars_timer.elapsed() < kstars_timeoutMs) \
+            QTest::qWait(kstars_stepMs); \
+    } \
+    KTRY_TIMEOUT_DEBUG_IMPL_SUB((expr), kstars_timeoutMs, kstars_stepMs)\
 
 /**
   * @brief Subroutine version of QTRY_VERIFY_WITH_TIMEOUT
