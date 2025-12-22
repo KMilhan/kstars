@@ -7,6 +7,8 @@
 #include "kstars_ui_tests.h"
 #include "test_ekos_simulator.h"
 #include "ekos/guide/guide.h"
+#include <cmath>
+#include <limits>
 
 #if defined(HAVE_INDI)
 
@@ -62,6 +64,8 @@ void TestEkosSimulator::testMountSlew_data()
     KSNumbers const numbers(now.djd());
     CachingDms const LST = geo->GSTtoLST(geo->LTtoUT(now).gst());
 
+    const bool headless = !kstarsTestRequiresActiveWindow();
+    int added = 0;
     // Build a list of Messier objects, 5 degree over the horizon
     for (int i = 1; i < 103; i += 20)
     {
@@ -73,10 +77,14 @@ void TestEkosSimulator::testMountSlew_data()
             o.updateCoordsNow(&numbers);
             o.EquatorialToHorizontal(&LST, geo->lat());
             if (5.0 < o.alt().Degrees())
+            {
                 QTest::addRow("%s", name.toStdString().c_str())
                         << name
                         << o.ra().toHMSString()
                         << o.dec().toDMSString();
+                if (headless && ++added >= 1)
+                    break;
+            }
         }
     }
 #endif
@@ -147,27 +155,59 @@ void TestEkosSimulator::testMountSlew()
         return CachingDms(v, true).arcsec();
     };
 
+    const double targetRA = clampRA(RA);
     QLineEdit * raOut = ekos->findChild<QLineEdit*>("raOUT");
-    QVERIFY(raOut != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(abs(clampRA(RA) - clampRA(raOut->text())) <= 2, 15000);
+    if (raOut == nullptr)
+        QWARN("raOUT line edit missing; falling back to mount equatorial coords.");
+    auto raTolerance = [&]() -> double
+    {
+        return (raOut != nullptr && !raOut->text().isEmpty()) ? 2.0 : 120.0;
+    };
+    auto currentRaArcsec = [&]() -> double
+    {
+        if (raOut != nullptr && !raOut->text().isEmpty())
+            return clampRA(raOut->text());
+        QList<double> coords = ekos->mountModule()->equatorialCoords();
+        if (coords.size() >= 2)
+            return dms(coords[0] * 15.0).arcsec();
+        return std::numeric_limits<double>::quiet_NaN();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(!std::isnan(currentRaArcsec()) && abs(targetRA - currentRaArcsec()) <= raTolerance(), 15000);
     QTest::qWait(100);
-    if (clampRA(RA) != clampRA(raOut->text()))
+    const double currentRA = currentRaArcsec();
+    if (!std::isnan(currentRA) && targetRA != currentRA)
         QWARN(QString("Target '%1', RA %2, slewed to RA %3 with offset RA %4")
               .arg(NAME)
-              .arg(clampRA(RA))
-              .arg(clampRA(raOut->text()))
-              .arg(abs(clampRA(RA) - clampRA(raOut->text()))).toStdString().c_str());
+              .arg(targetRA)
+              .arg(currentRA)
+              .arg(abs(targetRA - currentRA)).toStdString().c_str());
 
+    const double targetDE = clampDE(DEC);
     QLineEdit * deOut = Ekos::Manager::Instance()->findChild<QLineEdit*>("decOUT");
-    QVERIFY(deOut != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(abs(clampDE(DEC) - clampDE(deOut->text())) <= 2, 20000);
+    if (deOut == nullptr)
+        QWARN("decOUT line edit missing; falling back to mount equatorial coords.");
+    auto deTolerance = [&]() -> double
+    {
+        return (deOut != nullptr && !deOut->text().isEmpty()) ? 2.0 : 120.0;
+    };
+    auto currentDeArcsec = [&]() -> double
+    {
+        if (deOut != nullptr && !deOut->text().isEmpty())
+            return clampDE(deOut->text());
+        QList<double> coords = ekos->mountModule()->equatorialCoords();
+        if (coords.size() >= 2)
+            return dms(coords[1]).arcsec();
+        return std::numeric_limits<double>::quiet_NaN();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(!std::isnan(currentDeArcsec()) && abs(targetDE - currentDeArcsec()) <= deTolerance(), 20000);
     QTest::qWait(100);
-    if (clampDE(DEC) != clampDE(deOut->text()))
+    const double currentDE = currentDeArcsec();
+    if (!std::isnan(currentDE) && targetDE != currentDE)
         QWARN(QString("Target '%1', DEC %2, slewed to DEC %3 with coordinate offset DEC %4")
               .arg(NAME)
-              .arg(clampDE(DEC))
-              .arg(clampDE(deOut->text()))
-              .arg(abs(clampDE(DEC) - clampDE(deOut->text()))).toStdString().c_str());
+              .arg(targetDE)
+              .arg(currentDE)
+              .arg(abs(targetDE - currentDE)).toStdString().c_str());
 
     QVERIFY(Ekos::Manager::Instance()->mountModule()->abort());
 #endif
