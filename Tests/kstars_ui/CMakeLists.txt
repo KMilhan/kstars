@@ -172,6 +172,21 @@ TARGET_LINK_LIBRARIES(test_catalog_download ${KSTARS_UI_EKOS_LIBS})
 ADD_TEST(NAME TestCatalogDownload COMMAND test_catalog_download)
 SET_TESTS_PROPERTIES( TestCatalogDownload PROPERTIES LABELS "stable;ui" TIMEOUT 600 )
 
+# These UI tests share global resources (KStars instance, INDI simulators, DBus services) and are not safe to run in parallel.
+set_tests_properties(
+    TestEkosSimulator
+    TestEkosFocus
+    TestEkosCapture
+    TestEkosFilterWheel
+    TestEkosMeridianFlipState
+    TestEkosScheduler
+    TestEkosSchedulerOps
+    TestArtificialHorizon
+    TestEkosMount
+    TestCatalogDownload
+    PROPERTIES RESOURCE_LOCK kstars-ui
+)
+
 ELSE ()
 
 # JM 2010-10-15: Disable this test due to issues in CI
