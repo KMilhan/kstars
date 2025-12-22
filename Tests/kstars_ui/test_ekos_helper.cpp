@@ -18,6 +18,9 @@
 #include "ekos/scheduler/scheduler.h"
 #include "ekos/auxiliary/filtermanager.h"
 #include "kstarsdata.h"
+#include "../testhelpers.h"
+
+#include <QDir>
 
 TestEkosHelper::TestEkosHelper(QString guider)
 {
@@ -57,60 +60,60 @@ void TestEkosHelper::fillProfile(bool *isDone)
     qCInfo(KSTARS_EKOS_TEST) << "Fill profile: starting...";
     ProfileEditor* profileEditor = Ekos::Manager::Instance()->findChild<ProfileEditor*>("profileEditorDialog");
 
+    auto selectProfileDevice = [&](const QString &label, const char *comboName, const QString &logLabel)
+    {
+        QComboBox *combo = profileEditor->findChild<QComboBox*>(comboName);
+        if (combo != nullptr)
+        {
+            setTreeviewCombo(combo, label);
+        }
+        else
+        {
+            kstarsTestAddProfileDriver(label);
+        }
+        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: " << logLabel << " selected.";
+    };
+
     // Select the mount device
     if (m_MountDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, mountCombo);
-        setTreeviewCombo(mountCombo, m_MountDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Mount selected.";
+        selectProfileDevice(m_MountDevice, "mountCombo", "Mount");
     }
 
     // Select the CCD device
     if (m_CCDDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, ccdCombo);
-        setTreeviewCombo(ccdCombo, m_CCDDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: CCD selected.";
+        selectProfileDevice(m_CCDDevice, "ccdCombo", "CCD");
     }
 
     // Select the focuser device
     if (m_FocuserDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, focuserCombo);
-        setTreeviewCombo(focuserCombo, m_FocuserDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Focuser selected.";
+        selectProfileDevice(m_FocuserDevice, "focuserCombo", "Focuser");
     }
 
     // Select the guider device, if not empty and different from CCD
     if (m_GuiderDevice != "" && m_GuiderDevice != m_CCDDevice)
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, guiderCombo);
-        setTreeviewCombo(guiderCombo, m_GuiderDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Guider selected.";
+        selectProfileDevice(m_GuiderDevice, "guiderCombo", "Guider");
     }
 
     // Select the light panel device for flats capturing
     if (m_LightPanelDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, aux1Combo);
-        setTreeviewCombo(aux1Combo, m_LightPanelDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Light panel selected.";
+        selectProfileDevice(m_LightPanelDevice, "aux1Combo", "Light panel");
     }
 
     // Select the dome device
     if (m_DomeDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, domeCombo);
-        setTreeviewCombo(domeCombo, m_DomeDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Dome selected.";
+        selectProfileDevice(m_DomeDevice, "domeCombo", "Dome");
     }
 
     // Select the rotator device
     if (m_RotatorDevice != "")
     {
-        KTRY_PROFILEEDITOR_GADGET(QComboBox, aux2Combo);
-        setTreeviewCombo(aux2Combo, m_RotatorDevice);
-        qCInfo(KSTARS_EKOS_TEST) << "Fill profile: Rotator selected.";
+        selectProfileDevice(m_RotatorDevice, "aux2Combo", "Rotator");
     }
 
     // wait a short time to make the setup visible
@@ -358,11 +361,11 @@ void TestEkosHelper::preparePHD2()
     QString const phd2_config_name = ".PHDGuidingV2";
     QString const phd2_config_bak_name = ".PHDGuidingV2.bak";
     QString const phd2_config_orig_name = ".PHDGuidingV2_mf";
-    QStandardPaths::setTestModeEnabled(false);
-    QFileInfo phd2_config_home(QStandardPaths::writableLocation(QStandardPaths::HomeLocation), phd2_config_name);
-    QFileInfo phd2_config_home_bak(QStandardPaths::writableLocation(QStandardPaths::HomeLocation), phd2_config_bak_name);
+    const QString phd2_home = KTest::homePath();
+    QDir(phd2_home).mkpath("kstars_ui");
+    QFileInfo phd2_config_home(QDir(phd2_home).filePath(phd2_config_name));
+    QFileInfo phd2_config_home_bak(QDir(phd2_home).filePath(phd2_config_bak_name));
     QFileInfo phd2_config_orig(phd2_config_orig_name);
-    QStandardPaths::setTestModeEnabled(true);
     QWARN(QString("Writing PHD configuration file to '%1'").arg(phd2_config_home.filePath()).toStdString().c_str());
     if (phd2_config_home.exists())
     {
@@ -373,16 +376,26 @@ void TestEkosHelper::preparePHD2()
         QVERIFY(QFile::rename(phd2_config_home.filePath(), phd2_config_home_bak.filePath()));
     }
     QVERIFY2(phd2_config_orig.exists(), phd2_config_orig_name.toLocal8Bit() + " not found in current directory!");
-    QVERIFY(QFile::copy(phd2_config_orig_name, phd2_config_home.filePath()));
+    QFile configSource(phd2_config_orig.filePath());
+    QVERIFY2(configSource.open(QIODevice::ReadOnly | QIODevice::Text),
+             qPrintable(QString("Unable to read %1: %2").arg(phd2_config_orig.filePath(), configSource.errorString())));
+    QString configContents = QString::fromUtf8(configSource.readAll());
+    configSource.close();
+    configContents.replace(QStringLiteral("@TEST_HOME@"), KTest::homePath());
+    QFile configDest(phd2_config_home.filePath());
+    QVERIFY2(configDest.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate),
+             qPrintable(QString("Unable to write %1: %2").arg(phd2_config_home.filePath(), configDest.errorString())));
+    QVERIFY(configDest.write(configContents.toUtf8()) >= 0);
+    configDest.close();
 }
 
 void TestEkosHelper::cleanupPHD2()
 {
     QString const phd2_config = ".PHDGuidingV2";
     QString const phd2_config_bak = ".PHDGuidingV2.bak";
-    QStandardPaths::setTestModeEnabled(false);
-    QFileInfo phd2_config_home(QStandardPaths::writableLocation(QStandardPaths::HomeLocation), phd2_config);
-    QFileInfo phd2_config_home_bak(QStandardPaths::writableLocation(QStandardPaths::HomeLocation), phd2_config_bak);
+    const QString phd2_home = KTest::homePath();
+    QFileInfo phd2_config_home(QDir(phd2_home).filePath(phd2_config));
+    QFileInfo phd2_config_home_bak(QDir(phd2_home).filePath(phd2_config_bak));
     // remove PHD2 test config
     if (phd2_config_home.exists())
         QVERIFY(QFile::remove(phd2_config_home.filePath()));
