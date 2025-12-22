@@ -93,3 +93,12 @@ unitybuild_*.cpp
 .cache
 .idea
 /cmake-build*
+
+# Local test/container artifacts
+/.tmp/
+/.code/
+/build-docker-*/
+/kstars-build/
+
+# Optional offline astrometry cache (never commit large FITS indexes)
+/docker/astrometry/*.fits
