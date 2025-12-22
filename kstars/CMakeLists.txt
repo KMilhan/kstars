@@ -1571,6 +1571,20 @@ else ()
     endif()
     add_executable(kstars ${KSTARS_APP_SRCS})
     target_link_libraries(kstars KStarsLib)
+
+    if (NOT APPLE)
+        set(KSTARS_DEVSHARE_DIR "${CMAKE_BINARY_DIR}/devshare")
+        add_custom_target(run
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${KSTARS_DEVSHARE_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E rm -f "${KSTARS_DEVSHARE_DIR}/kstars"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/data" "${KSTARS_DEVSHARE_DIR}/kstars"
+            COMMAND ${CMAKE_COMMAND} -E env
+                "XDG_DATA_DIRS=${KSTARS_DEVSHARE_DIR}:$ENV{XDG_DATA_DIRS}"
+                $<TARGET_FILE:kstars>
+            DEPENDS kstars
+            USES_TERMINAL
+        )
+    endif()
 endif ()
 
 if(APPLE)
