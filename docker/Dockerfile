@@ -1,8 +1,14 @@
-FROM ubuntu:24.10
+FROM ubuntu:25.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# PPA provides newer INDI/StellarSolver versions required by KStars.
+RUN apt update && apt -y install --no-install-recommends software-properties-common gpg-agent ca-certificates
+RUN add-apt-repository -y ppa:mutlaqja/ppa
 
 # Suitable for builds
-RUN apt update && apt -y install --no-install-recommends software-properties-common gpg-agent
-RUN apt update && add-apt-repository ppa:mutlaqja/ppa
 RUN apt update && apt -y install --no-install-recommends \
       gcc-multilib \
       g++-multilib \
@@ -19,7 +25,17 @@ RUN apt update && apt -y install --no-install-recommends \
       wcslib-dev \
       libraw-dev \
       libgsl-dev \
-      libsecret-1-dev
+      libsecret-1-dev \
+      libcurl4-openssl-dev
+
+# INDI + StellarSolver
+RUN apt update && apt -y install --no-install-recommends \
+      libindi1 \
+      libindi-dev \
+      libindi-data \
+      indi-bin \
+      libstellarsolver \
+      libstellarsolver-dev
 RUN apt update && apt -y install --no-install-recommends \
       qt6-base-dev \
       qt6-declarative-dev \
@@ -38,16 +54,35 @@ RUN apt update && apt -y install --no-install-recommends \
       libkf6crash-dev \
       libkf6notifyconfig-dev \
       libqt6sql6-sqlite \
-      libqt6datavisualization6-dev
+      qt6-datavis3d-dev
+
+# Also install Qt5 + KF5 to support building/testing without Qt6.
+RUN apt update && apt -y install --no-install-recommends \
+      qtbase5-dev \
+      qtdeclarative5-dev \
+      qtmultimedia5-dev \
+      qtpositioning5-dev \
+      libqt5websockets5-dev \
+      libqt5svg5-dev \
+      libqt5sql5-sqlite \
+      libqt5datavisualization5-dev \
+      qt5keychain-dev \
+      libkf5config-dev \
+      libkf5guiaddons-dev \
+      libkf5i18n-dev \
+      libkf5newstuff-dev \
+      libkf5notifications-dev \
+      libkf5xmlgui-dev \
+      libkf5plotting-dev \
+      libkf5crash-dev \
+      libkf5notifyconfig-dev \
+      libkf5kio-dev
 RUN apt update && apt -y install --no-install-recommends \
       phonon4qt6-backend-vlc \
       qtkeychain-qt6-dev \
       qml-module-qtquick-controls
 
 # Suitable for tests
-RUN apt update && add-apt-repository ppa:mutlaqja/ppa
-RUN apt update && add-apt-repository ppa:pch/phd2
-
 ENV TZ=Greenwich
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt update && apt -y --no-install-recommends install \
@@ -57,17 +92,21 @@ RUN apt update && apt -y --no-install-recommends install \
       xplanet \
       xplanet-images \
       astrometry.net \
+      appstream \
       kded5 \
       kinit \
       breeze-icon-theme \
-      gsc gsc-data \
-      phd2 \
-      xvfb
+      xvfb \
+      dbus \
+      dbus-x11
 
 # qt6 theme
 ENV QT_QPA_PLATFORMTHEME=qt6ct
 RUN apt update && apt -y --no-install-recommends install qt6ct
 RUN d=/root/.config/qt6ct ; mkdir -p "$d" && echo '[Appearance]\nicon_theme=breeze' > "$d/qt6ct.conf"
+
+# qt5 theme
+RUN apt update && apt -y --no-install-recommends install qt5ct
 
 # Ninja
 RUN apt update && apt -y --no-install-recommends install ninja-build
@@ -92,13 +131,16 @@ RUN apt install -y --no-install-recommends \
       libsaxon-java \
       openjdk-11-jre-headless
 
-# Astrometry
-ADD http://data.astrometry.net/4200/index-4208.fits /root/.local/share/kstars/astrometry/
-ADD http://data.astrometry.net/4200/index-4209.fits /root/.local/share/kstars/astrometry/
-ADD http://data.astrometry.net/4200/index-4210.fits /root/.local/share/kstars/astrometry/
+# Prepare astrometry directory (tests should not require downloading indexes at runtime).
+RUN mkdir -p /root/.local/share/kstars/astrometry
+COPY docker/astrometry/ /opt/kstars/astrometry/
+RUN cp -a /opt/kstars/astrometry/*.fits /root/.local/share/kstars/astrometry/ 2>/dev/null || true
+
+# Offline test runner helper (usable with `docker run --network=none ... run-offline-tests`).
+COPY docker/run-offline-tests.sh /usr/local/bin/run-offline-tests
+RUN chmod +x /usr/local/bin/run-offline-tests
 
 # From https://invent.kde.org/sysadmin/ci-tooling/-/blob/master/system-images/suse-qt615/Dockerfile
-RUN apt update && apt -y install dbus
 RUN dbus-uuidgen > /etc/machine-id
 
 CMD /bin/bash
