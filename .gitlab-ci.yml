@@ -16,6 +16,11 @@ include:
       - /gitlab-templates/craft-macos-x86-64-qt6.yml
       - /gitlab-templates/craft-macos-arm64-qt6.yml
 
+variables:
+  # Custom CI images should be prebuilt and pinned (avoid moving 'latest').
+  # Override per-project/instance if needed.
+  KSTARS_CI_IMAGE: "tallfurryman/kstars-ci@sha256:352e0bca4fc4c6229c7b91951ea9fc24d28353d164d3ad50afce93314b4e4c29"
+
 # Jobs
 # Standard build recipes
 
@@ -124,11 +129,12 @@ flatpak-arm64:
 
 .custom_build:
   interruptible: true
-  image: tallfurryman/kstars-ci:latest
+  image: "$KSTARS_CI_IMAGE"
   variables:
     CCACHE_BASEDIR: "$CI_PROJECT_DIR"
     QT_TEST_TIMEOUT_FUNCTION: "600"
-    QT_QPA_PLATFORM: "eglfs"
+    QT_QPA_PLATFORM: "offscreen"
+    KSTARS_TEST_ENABLE_NETWORK: "0"
     CCACHE_DIR: "$CI_PROJECT_DIR/.ccache"
   cache:
     key: "CCACHE-DB-$CI_PROJECT_ID"
@@ -138,25 +144,9 @@ flatpak-arm64:
     - !reference [.custom-build-recipes, rules]
   before_script:
     - du -hs "${CCACHE_DIR}" || mkdir -p "${CCACHE_DIR}"
-    - add-apt-repository --remove ppa:mutlaqja/ppa
-    - add-apt-repository ppa:mutlaqja/ppa
-    - apt update
-    - apt -y --no-install-recommends install libindi1 libindi-dev libindi-data indi-bin xplanet gsc phd2 libstellarsolver libstellarsolver-dev libcurl4-openssl-dev
     - mkdir -p kstars-build
   after_script:
     - ccache -s
-
-# Run the build and keep the ccache folder as a fail-fast
-build:
-  stage: build
-  extends: .custom_build
-  allow_failure: true # TODO: REMOVE WHEN STABLE AGAIN
-  needs:
-    - suse_tumbleweed_qt610
-  script:
-    - cd kstars-build
-    - cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCCACHE_SUPPORT=ON -DBUILD_TESTING=OFF -DBUILD_DOC=OFF -DBUILD_WITH_QT6=ON ..
-    - ninja -j8 all install
 
 # Run the full validation in one step, stable tests that must not fail
 # The artifacts take far too much time to propagate from one step to the other
@@ -165,28 +155,37 @@ build:
 build-and-test-stable:
   stage: test
   extends: .custom_build
-  allow_failure: true # TODO: REMOVE WHEN STABLE AGAIN
-  needs:
-    - build
-  timeout: 3 hours
-  variables:
-    BUILD_TESTING: "ON"
+  allow_failure: false
+  timeout: 3h
   script:
     - cd kstars-build
-    - cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCCACHE_SUPPORT=ON -DBUILD_TESTING=ON -DBUILD_WITH_QT6=ON ..
-    - ninja -j8 all install
+    # Build with Qt5 in the custom image. The packaged StellarSolver/INDI stack is Qt5-based in most distros/PPAs.
+    - cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCCACHE_SUPPORT=ON -DBUILD_TESTING=ON -DBUILD_DOC=OFF -DBUILD_WITH_QT6=OFF ..
+    - ninja -j8 all
     - rm -rf Testing
-    - mkdir -p /var/run/dbus
-    - dbus-daemon --config-file=/usr/share/dbus-1/system.conf --print-address
-    - dbus-send --system --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames
-    - apt install -y --no-install-recommends dbus-x11
-    - export $(dbus-launch)
-    - dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames
-    - xvfb-run ctest -T test -L stable -LE unstable --output-on-failure
+    - dbus-run-session -- ctest -T test -L stable -LE unstable --output-on-failure -j8
   after_script:
-    - pwd
-    - saxon-xslt -u $(find . -name Test.xml) https://raw.githubusercontent.com/rpavlik/jenkins-ctest-plugin/master/ctest-to-junit.xsl > ./junit_result.stable.xml
-    - ccache -s
+    - saxon-xslt -u "$(find . -name Test.xml | head -n1)" "$CI_PROJECT_DIR/.gitlab-ci/ctest-to-junit.xsl" > ./junit_result.stable.xml
   artifacts:
     reports:
       junit: ./junit_result.stable.xml
+
+build-and-test-unstable:
+  stage: test
+  extends: .custom_build
+  allow_failure: true
+  timeout: 1h
+  script:
+    - cd kstars-build
+    - cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCCACHE_SUPPORT=ON -DBUILD_TESTING=ON -DBUILD_DOC=OFF -DBUILD_WITH_QT6=OFF ..
+    - ninja -j8 all
+    - rm -rf Testing
+    - dbus-run-session -- ctest -T test -L unstable --output-on-failure -j8
+  after_script:
+    - saxon-xslt -u "$(find . -name Test.xml | head -n1)" "$CI_PROJECT_DIR/.gitlab-ci/ctest-to-junit.xsl" > ./junit_result.unstable.xml
+  artifacts:
+    reports:
+      junit: ./junit_result.unstable.xml
+
+## Optional Qt6 test job intentionally omitted here:
+## - Qt6 builds need a Qt6-based StellarSolver/INDI stack in the image.

@@ -42,27 +42,29 @@ This is the `suse_tumbleweed_qt515` job.
 
 The Windows regular KDE Invent pipeline runs on an image of Windows with Qt5.15 and MsVC 2019.
 
-The job is named `windows_qt515` in `.gitlab-ci.yml`.
+The job is named `windows_qt69` in `.gitlab-ci.yml`.
 
 ### Android build
 
 The Android regular KDE Invent pipeline cannot be operated anymore with Qt5.
 Only Qt6 is now supported, and KStars/Ekos needs to be ported on this platform for the build to eventually succeed.
 
-The job is named `android_qt515` in `.gitlab-ci.yml`.
+The Android job name is provided by the KDE CI templates and may change with the template revisions.
 
-### Custom build on Ubuntu22
+### Custom build on Ubuntu
 
 Historically, there has been a need for end-to-end tests of Ekos to stabilise and secure behaviour against INDI drivers.
 A custom build image was built from `docker/Dockerfile`, based on Ubuntu, supporting installation of external
 dependencies *at the time of the build*. While inherently unstable due to the lack of versioning of those dependencies,
 this allowed testing against nightly builds, mainly INDI nightly builds.
 
-The jobs are named `build` and `build-and-test-stable` in `.gitlab-ci.yml`. They are separate builds but use caching
-to speed up the second build. Although this separation is unnecessary, this allows contributors to retrieve build artifacts
-while the tests, quite lengthy, run in the background.
+The jobs are named `build-and-test-stable` and `build-and-test-unstable` in `.gitlab-ci.yml`.
+They are intended to run without fetching external dependencies at job runtime (dependencies are expected to be baked into
+the custom CI image).
 
 As of 2025/03, that build runs outside of the KDE Invent infrastructure on an aging system available from a volunteer contributor in best-effort.
+
+Note: The Ubuntu/PPA packaged StellarSolver stack is typically Qt5-based, so custom-image test runs are currently Qt5 builds.
 
 ### CppCheck
 
