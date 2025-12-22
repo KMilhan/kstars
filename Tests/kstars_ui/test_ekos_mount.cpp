@@ -18,14 +18,30 @@
 #include "test_ekos_simulator.h"
 #include "ekos/mount/mount.h"
 
+namespace
+{
+bool g_mountTestDisabled = false;
+}
+
 TestEkosMount::TestEkosMount(QObject *parent) : QObject(parent)
 {
 }
 
 void TestEkosMount::initTestCase()
 {
+    if (!kstarsTestRequiresActiveWindow())
+    {
+        g_mountTestDisabled = true;
+        QWARN("Mount control test disabled because an active window is required, but the test is running headless/offscreen.");
+        return;
+    }
+
     if (!qgetenv("CI").isEmpty())
-        QSKIP("Skipping mount control test until QML/GL mixed window issue is resolved under EGLFS.");
+    {
+        g_mountTestDisabled = true;
+        QWARN("Mount control test disabled under CI due to EGLFS QML/GL issues.");
+        return;
+    }
 
     KVERIFY_EKOS_IS_HIDDEN();
     KTRY_OPEN_EKOS();
@@ -102,6 +118,9 @@ void TestEkosMount::initTestCase()
 
 void TestEkosMount::cleanupTestCase()
 {
+    if (g_mountTestDisabled)
+        return;
+
     KTRY_EKOS_STOP_SIMULATORS();
     KTRY_CLOSE_EKOS();
     KVERIFY_EKOS_IS_HIDDEN();
@@ -120,6 +139,8 @@ void TestEkosMount::testMountCtrlCoordLabels()
 #if QT_VERSION < 0x050900
     QSKIP("Skipping fixture-based test on old QT version.");
 #else
+    if (g_mountTestDisabled)
+        return;
     // Test proper setting of input coord label widget according to
     // type radio button selection
 
@@ -161,6 +182,8 @@ void TestEkosMount::testMountCtrlCoordLabels()
 
 void TestEkosMount::testMountCtrlCoordConversion()
 {
+    if (g_mountTestDisabled)
+        return;
     //  Test coord calculator with cyclic transform chain driven by
     //  cyclic changes of selection of coord type radiobutton
 
@@ -244,6 +267,8 @@ void TestEkosMount::testMountCtrlCoordConversion()
 
 void TestEkosMount::testMountCtrlGoto()
 {
+    if (g_mountTestDisabled)
+        return;
     int i;
 
     // montecarlo test of GOTO with RA/Dec coordinate
@@ -359,6 +384,8 @@ void TestEkosMount::testMountCtrlGoto()
 
 void TestEkosMount::testMountCtrlSync()
 {
+    if (g_mountTestDisabled)
+        return;
     int i;
 
     // montecarlo test of SYNC with RA/Dec coordinate
