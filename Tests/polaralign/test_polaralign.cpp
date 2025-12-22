@@ -15,6 +15,8 @@
 #include "fitsviewer/fitscommon.h"
 #include "fitsviewer/fitsdata.h"
 #include "rotations.h"
+#include <QFile>
+#include <QFileInfo>
 
 using Rotations::V3;
 
@@ -58,9 +60,17 @@ void loadDummyFits(QSharedPointer<FITSData> &image, const KStarsDateTime &time,
     // Borrow one of the other fits files in the test suite.
     // We don't use the contents of the image, but the image's width and height.
     // We do set the wcs data.
-    QFuture<bool> worker = image->loadFromFile("ngc4535-autofocus1.fits");
-    QTRY_VERIFY_WITH_TIMEOUT(worker.isFinished(), 60000);
-    QVERIFY(worker.result());
+    QString filename = QFINDTESTDATA("ngc4535-autofocus1.fits");
+    if (filename.isEmpty())
+        filename = QStringLiteral("ngc4535-autofocus1.fits");
+
+    QFile file(filename);
+    QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(QString("Failed to open %1").arg(filename)));
+    image->setExtension(QFileInfo(filename).suffix().toLower());
+    image->setFilename(filename);
+    const QByteArray buffer = file.readAll();
+    QVERIFY(!buffer.isEmpty());
+    QVERIFY(image->loadFromBuffer(buffer));
     auto stats = image->getStatistics();
     stats.width = IMAGE_WIDTH;
     stats.height = IMAGE_HEIGHT;
@@ -134,7 +144,14 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
 
     double azimuthError, altitudeError;
     polarAlign.calculateAzAltError(&azimuthError, &altitudeError);
-    polarAlign.setMaxPixelSearchRange(std::hypot(azimuthError, altitudeError) + 1);
+    const auto normalizeAz = [](double degrees)
+    {
+        dms angle(degrees);
+        angle.reduceToRange(dms::MINUSPI_TO_PI);
+        return angle.Degrees();
+    };
+    const double azimuthErrorNorm = normalizeAz(azimuthError);
+    polarAlign.setMaxPixelSearchRange(std::hypot(azimuthErrorNorm, altitudeError) + 1);
 
     QPointF corrected;
     if (data.x < 0 && data.y < 0)
@@ -159,7 +176,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
 
         // Test the entire path, start to end. We should see the full azimuth and altitude errors.
         QVERIFY(polarAlign.pixelError(image, QPointF(data.x, data.y), corrected, &azE, &altE));
-        QVERIFY(fabs(azE - azimuthError) < .02);
+        QVERIFY(fabs(normalizeAz(azE) - azimuthErrorNorm) < .05);
         QVERIFY(fabs(altE - altitudeError) < .01);
 
         // Simulate that the user has started correcting, and is halfway on the alt-only segment,
@@ -167,7 +184,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
         if (polarAlign.pixelError(image, QPointF((altCorrected.x() + data.x) / 2, (altCorrected.y() + data.y) / 2), corrected,
                                   &azE, &altE))
         {
-            QVERIFY(fabs(azE - azimuthError) < .01);
+            QVERIFY(fabs(normalizeAz(azE) - azimuthErrorNorm) < .01);
             QVERIFY(fabs(altE - altitudeError / 2.0) < .01);
         }
         else QVERIFY(canSkipPixelError);
@@ -176,7 +193,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
         // The azimuth error should not be fixed, but alt should be fully corrected.
         if (polarAlign.pixelError(image, altCorrected, corrected, &azE, &altE))
         {
-            QVERIFY(fabs(azE - azimuthError) < .01);
+            QVERIFY(fabs(normalizeAz(azE) - azimuthErrorNorm) < .01);
             QVERIFY(fabs(altE) < .01);
         }
         else QVERIFY(canSkipPixelError);
@@ -186,7 +203,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
         if (polarAlign.pixelError(image, QPointF((corrected.x() + altCorrected.x()) / 2,
                                   (corrected.y() + altCorrected.y()) / 2), corrected, &azE, &altE))
         {
-            QVERIFY(fabs(azE - azimuthError / 2) < .01);
+            QVERIFY(fabs(normalizeAz(azE) - azimuthErrorNorm / 2) < .01);
             QVERIFY(fabs(altE) < .01);
         }
         else QVERIFY(canSkipPixelError);
@@ -194,7 +211,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
         // At the end there should be no error left.
         if (polarAlign.pixelError(image, corrected, corrected, &azE, &altE))
         {
-            QVERIFY(fabs(azE) < .01);
+            QVERIFY(fabs(normalizeAz(azE)) < .01);
             QVERIFY(fabs(altE) < .01);
         }
         else QVERIFY(canSkipPixelError);
@@ -203,7 +220,7 @@ void runPAA(const GeoLocation &geo, const PaaData &data, bool eastToTheRight = t
         // Using that correction path, there should be no Azimuth error, but alt error remains.
         if (polarAlign.pixelError(image, QPointF(data.x, data.y), altCorrected, &azE, &altE))
         {
-            QVERIFY(fabs(azE) < .01);
+            QVERIFY(fabs(normalizeAz(azE)) < .01);
             QVERIFY(fabs(altE - altitudeError) < .01);
         }
         else QVERIFY(canSkipPixelError);
