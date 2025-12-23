@@ -21,7 +21,7 @@ OpsAstrometryIndexFiles::OpsAstrometryIndexFiles(Align *parent) : QDialog(KStars
     downloadSpeed       = 100;
     actualdownloadSpeed = downloadSpeed;
     alignModule         = parent;
-    manager             = new QNetworkAccessManager();
+    manager             = new QNetworkAccessManager(this);
 
     indexURL->setText("http://data.astrometry.net/");
 
@@ -416,8 +416,11 @@ void OpsAstrometryIndexFiles::slotOpenIndexFileDirectory()
 
 bool OpsAstrometryIndexFiles::astrometryIndicesAreAvailable()
 {
-    auto url = QUrl(indexURL->text());
-    auto response = manager->get(QNetworkRequest(QUrl(url.url(QUrl::RemovePath))));
+    const QUrl url(indexURL->text());
+    if (url.isLocalFile())
+        return QFileInfo(url.toLocalFile()).exists();
+
+    auto response = manager->get(QNetworkRequest(url.adjusted(QUrl::RemovePath)));
     QTimer timeout(this);
     timeout.setInterval(5000);
     timeout.setSingleShot(true);
