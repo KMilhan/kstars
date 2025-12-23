@@ -172,6 +172,11 @@ TARGET_LINK_LIBRARIES(test_catalog_download ${KSTARS_UI_EKOS_LIBS})
 ADD_TEST(NAME TestCatalogDownload COMMAND test_catalog_download)
 SET_TESTS_PROPERTIES( TestCatalogDownload PROPERTIES LABELS "stable;ui" TIMEOUT 600 )
 
+ADD_EXECUTABLE(test_astrometry_index_download ${KSTARS_UI_EKOS_SRC} test_astrometry_index_download.cpp)
+TARGET_LINK_LIBRARIES(test_astrometry_index_download ${KSTARS_UI_EKOS_LIBS})
+ADD_TEST(NAME TestAstrometryIndexDownload COMMAND test_astrometry_index_download)
+SET_TESTS_PROPERTIES( TestAstrometryIndexDownload PROPERTIES LABELS "stable;ui" TIMEOUT 120 )
+
 # These UI tests share global resources (KStars instance, INDI simulators, DBus services) and are not safe to run in parallel.
 set_tests_properties(
     TestEkosSimulator
@@ -184,6 +189,7 @@ set_tests_properties(
     TestArtificialHorizon
     TestEkosMount
     TestCatalogDownload
+    TestAstrometryIndexDownload
     PROPERTIES RESOURCE_LOCK kstars-ui
 )
 
